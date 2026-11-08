@@ -77,6 +77,8 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         if (size == 0 || collateral == 0) revert ZeroAmount();
         if (size > collateral * maxLeverage) revert LeverageTooHigh();
 
+            error NotPositionOwner();
+
         uint256 price = oracle.getPrice(market); // reverts if disabled, bad or stale
 
         id = nextPositionId++;
@@ -86,5 +88,26 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         vault.reserve(size); // reverts if it would breach the utilization cap
 
         emit PositionOpened(id, msg.sender, market, isLong, size, collateral, price);
+            event PositionIncreased(uint256 indexed id, uint256 sizeDelta, uint256 collateralDelta, uint256 newEntryPrice);
     }
 }
+    /// @notice Grow a position, optionally topping up collateral. Entry price becomes size-weighted.
+    function increasePosition(uint256 id, uint256 sizeDelta, uint256 collateralDelta) external nonReentrant {
+        Position storage p = positions[id];
+        if (p.owner != msg.sender) revert NotPositionOwner();
+        if (sizeDelta == 0) revert ZeroAmount();
+
+        uint256 newSize = p.size + sizeDelta;
+        uint256 newCollateral = p.collateral + collateralDelta;
+        if (newSize > newCollateral * maxLeverage) revert LeverageTooHigh();
+
+        uint256 price = oracle.getPrice(p.market);
+        p.entryPrice = (p.size * p.entryPrice + sizeDelta * price) / newSize;
+        p.size = newSize;
+        p.collateral = newCollateral;
+
+        if (collateralDelta > 0) asset.safeTransferFrom(msg.sender, address(this), collateralDelta);
+        vault.reserve(sizeDelta);
+
+        emit PositionIncreased(id, sizeDelta, collateralDelta, p.entryPrice);
+    }
