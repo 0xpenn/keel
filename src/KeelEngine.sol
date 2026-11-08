@@ -10,7 +10,7 @@ import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /// @title KeelEngine
 /// @notice Trader side of Keel: holds collateral and positions.
-///         Step 6: open positions. No fees, no PnL.
+///         Step 7: open and increase positions. No fees, no PnL.
 /// @dev `size` and `collateral` are in asset units (1 unit = 1 USD).
 contract KeelEngine is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -42,10 +42,12 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         uint256 collateral,
         uint256 entryPrice
     );
+    event PositionIncreased(uint256 indexed id, uint256 sizeDelta, uint256 collateralDelta, uint256 newEntryPrice);
 
     error ZeroAmount();
     error InvalidParam();
     error LeverageTooHigh();
+    error NotPositionOwner();
 
     constructor(IKeelVault vault_, IPriceOracle oracle_, address admin, uint256 maxLev) Ownable(admin) {
         vault = vault_;
@@ -77,8 +79,6 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         if (size == 0 || collateral == 0) revert ZeroAmount();
         if (size > collateral * maxLeverage) revert LeverageTooHigh();
 
-            error NotPositionOwner();
-
         uint256 price = oracle.getPrice(market); // reverts if disabled, bad or stale
 
         id = nextPositionId++;
@@ -88,9 +88,8 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         vault.reserve(size); // reverts if it would breach the utilization cap
 
         emit PositionOpened(id, msg.sender, market, isLong, size, collateral, price);
-            event PositionIncreased(uint256 indexed id, uint256 sizeDelta, uint256 collateralDelta, uint256 newEntryPrice);
     }
-}
+
     /// @notice Grow a position, optionally topping up collateral. Entry price becomes size-weighted.
     function increasePosition(uint256 id, uint256 sizeDelta, uint256 collateralDelta) external nonReentrant {
         Position storage p = positions[id];
@@ -111,3 +110,4 @@ contract KeelEngine is Ownable, ReentrancyGuard {
 
         emit PositionIncreased(id, sizeDelta, collateralDelta, p.entryPrice);
     }
+}

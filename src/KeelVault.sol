@@ -77,6 +77,7 @@ contract KeelVault is ERC4626, Ownable {
         reservedLiquidity -= amount;
         emit Released(amount, reservedLiquidity);
     }
+
     // ---- LP withdrawal lock ----
 
     /// @notice LP assets not reserved by open positions, i.e. withdrawable.
@@ -94,7 +95,7 @@ contract KeelVault is ERC4626, Ownable {
     function maxRedeem(address account) public view override returns (uint256) {
         return Math.min(super.maxRedeem(account), _convertToShares(freeLiquidity(), Math.Rounding.Floor));
     }
-    
+
     /// @dev Virtual-share offset: blunts the first-depositor inflation attack.
     function _decimalsOffset() internal pure override returns (uint8) {
         return 6;
