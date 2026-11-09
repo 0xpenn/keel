@@ -4,11 +4,13 @@ pragma solidity ^0.8.24;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title PriceOracle
 /// @notice Maps market ids (e.g. bytes32("BTC")) to Chainlink feeds and serves trusted prices.
 contract PriceOracle is Ownable {
     using Math for uint256;
+    using SafeCast for int256;
 
     uint256 public constant PRICE_PRECISION = 1e18;
 
@@ -44,7 +46,7 @@ contract PriceOracle is Ownable {
     }
 
     function _setMaxPriceAge(uint256 maxPriceAge_) internal {
-        if (maxPriceAge_ == 0) revert InvalidParam();
+        if (maxPriceAge_ == 0 || maxPriceAge_ > 1 days) revert InvalidParam();
         maxPriceAge = maxPriceAge_;
         emit MaxPriceAgeSet(maxPriceAge_);
     }
@@ -57,9 +59,12 @@ contract PriceOracle is Ownable {
         if (!m.enabled) revert MarketDisabled();
 
         (, int256 answer,, uint256 updatedAt,) = m.feed.latestRoundData();
+
+        // Safe: a few seconds of skew is negligible against maxPriceAge (capped at 1 day).
+        // forge-lint: disable-next-line(block-timestamp)
         if (answer <= 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > maxPriceAge) {
             revert BadPrice();
         }
-        return uint256(answer).mulDiv(PRICE_PRECISION, 10 ** m.feedDecimals);
+        return answer.toUint256().mulDiv(PRICE_PRECISION, 10 ** m.feedDecimals);
     }
 }

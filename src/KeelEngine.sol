@@ -9,8 +9,7 @@ import {IKeelVault} from "./interfaces/IKeelVault.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /// @title KeelEngine
-/// @notice Trader side of Keel: holds collateral and positions.
-///         Step 7: open and increase positions. No fees, no PnL.
+/// @notice Trader side of Keel: holds collateral and positions. No fees, no PnL.
 /// @dev `size` and `collateral` are in asset units (1 unit = 1 USD).
 contract KeelEngine is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -43,6 +42,7 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         uint256 entryPrice
     );
     event PositionIncreased(uint256 indexed id, uint256 sizeDelta, uint256 collateralDelta, uint256 newEntryPrice);
+    event PositionClosed(uint256 indexed id, uint256 collateralReturned);
 
     error ZeroAmount();
     error InvalidParam();
@@ -109,5 +109,16 @@ contract KeelEngine is Ownable, ReentrancyGuard {
         vault.reserve(sizeDelta);
 
         emit PositionIncreased(id, sizeDelta, collateralDelta, p.entryPrice);
+    }
+
+    /// @notice Close a position: unlock its reserve and return collateral 1:1 (no PnL).
+    /// @dev Needs no oracle read, so exits work even if a feed is down.
+    function closePosition(uint256 id) external nonReentrant {
+        Position memory p = positions[id];
+        if (p.owner != msg.sender) revert NotPositionOwner();
+        delete positions[id];
+        vault.release(p.size);
+        asset.safeTransfer(msg.sender, p.collateral);
+        emit PositionClosed(id, p.collateral);
     }
 }
